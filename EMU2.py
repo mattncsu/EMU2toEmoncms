@@ -2,10 +2,17 @@
 
 #
 # EMU2_reader.py -- Copyright (C) 2016 Stephen Makonin
-# modified to post data to emoncms 2018
+#
 
 import os, sys, platform, time, datetime, serial
+import requests
 import xml.etree.ElementTree as et
+
+
+domain = "192.168.1.100"
+emoncmspath = "emoncms"
+apikey = "xxxx"
+nodeid = "power"
 
 print()
 print('Read your Rainforest EMU2 device:')
@@ -45,6 +52,11 @@ try:
             power /= int(tree.find('Divisor').text, 16)
             power = round(power, int(tree.find('DigitsRight').text, 16))
             print('Message:', tree.tag, '- Apparent Power = ', power, 'kW', '(delay', diff, 's).')
+            request = "http://"+domain+"/"+emoncmspath+"/input/post.json?apikey="+apikey+"&node="+str(nodeid)+"&json={InstantPower:"+str(power)+"}"
+#            print(request)
+            r = requests.get(request)
+            if r.status_code != requests.codes.ok:
+              print(r.status_code)
         elif tree.tag == 'CurrentSummationDelivered':
             ts = int(tree.find('TimeStamp').text, 16)
             diff = ts - delivered_ts
@@ -56,6 +68,11 @@ try:
             energy /= int(tree.find('Divisor').text, 16)
             energy = round(energy, int(tree.find('DigitsRight').text, 16))
             print('Message:', tree.tag, '- Net Apparent Energy = ', energy, 'kWh', '(delay', diff, 's).')
+            request = "http://"+domain+"/"+emoncmspath+"/input/post.json?    apikey="+apikey+"&node="+str(nodeid)+"&json={MeterTotal:"+str(energy)+"}"
+#            print(request)
+            r = requests.get(request.strip())
+            if r.status_code != requests.codes.ok:
+               print(r.status_code)
         else:
             print()
             print('Message:', tree.tag)
