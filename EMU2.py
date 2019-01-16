@@ -54,9 +54,17 @@ try:
             print('Message:', tree.tag, '- Apparent Power = ', power, 'kW', '(delay', diff, 's).')
             request = "http://"+domain+"/"+emoncmspath+"/input/post.json?apikey="+apikey+"&node="+str(nodeid)+"&json={InstantPower:"+str(power)+"}"
 #            print(request)
-            r = requests.get(request)
-            if r.status_code != requests.codes.ok:
-              print(r.status_code)
+            try:
+                r = requests.get(request,timeout=3)
+                r.raise_for_status()
+            except requests.exceptions.HTTPError as errh:
+                print ("Http Error:",errh)
+            except requests.exceptions.ConnectionError as errc:
+                print ("Error Connecting:",errc)
+            except requests.exceptions.Timeout as errt:
+                print ("Timeout Error:",errt)
+            except requests.exceptions.RequestException as err:
+                print ("OOps: Something Else",err)
         elif tree.tag == 'CurrentSummationDelivered':
             ts = int(tree.find('TimeStamp').text, 16)
             diff = ts - delivered_ts
@@ -70,9 +78,17 @@ try:
             print('Message:', tree.tag, '- Net Apparent Energy = ', energy, 'kWh', '(delay', diff, 's).')
             request = "http://"+domain+"/"+emoncmspath+"/input/post.json?    apikey="+apikey+"&node="+str(nodeid)+"&json={MeterTotal:"+str(energy)+"}"
 #            print(request)
-            r = requests.get(request.strip())
-            if r.status_code != requests.codes.ok:
-               print(r.status_code)
+            try:
+                r = requests.get(request.strip(),timeout=3)
+                r.raise_for_status()
+            except requests.exceptions.HTTPError as errh:
+                print ("Http Error:",errh)
+            except requests.exceptions.ConnectionError as errc:
+                print ("Error Connecting:",errc)
+            except requests.exceptions.Timeout as errt:
+                print ("Timeout Error:",errt)
+            except requests.exceptions.RequestException as err:
+                print ("OOps: Something Else",err)
         else:
             print()
             print('Message:', tree.tag)
