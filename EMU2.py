@@ -3,14 +3,105 @@
 #
 # EMU2_reader.py -- Copyright (C) 2016 Stephen Makonin
 #
+# 2024-04 Added Time of Use calculations to automatically set the manual price in the EMU-2
 
 import os, sys, platform, time, datetime, serial
 import requests
 import xml.etree.ElementTree as et
 
+import datetime
+import time
 
-domain = "192.168.1.100"
-emoncmspath = "emoncms"
+
+price_to_compare=0.09997
+on_peak_multiplier = 1.8632
+off_peak_multiplier = 0.7821
+super_off_peak_multiplier = 0.5749
+distribution_charge=0.043412+0.004430
+
+# Define the TOU pricing periods
+pricing_periods = {
+    "On-Peak": (datetime.time(14, 0), datetime.time(21, 0)),
+    "Super Off-Peak": ((datetime.time(23, 0), datetime.time(0, 0)),(datetime.time(0, 0), datetime.time(6, 0))),
+    "Off-Peak": ((datetime.time(0, 0), datetime.time(6, 0)), (datetime.time(9, 0), datetime.time(14, 0)), (datetime.time(21, 0), datetime.time(23, 0)))
+}
+
+current_period = None
+
+
+
+def setPrice(period):
+    
+        # Calculate the price based on the period
+    if period == "On-Peak":
+        price = price_to_compare * on_peak_multiplier + distribution_charge
+    elif period == "Off-Peak":
+        price = price_to_compare * off_peak_multiplier + distribution_charge
+    elif period == "Super Off-Peak":
+        price = price_to_compare * super_off_peak_multiplier + distribution_charge
+    else:
+        price = price_to_compare + distribution_charge  # Default to normal price if period is not recognized
+        
+    print(f"Switching to {period} period. Price is ${price}.")
+
+    # Convert price to hexadecimal
+    price_hex = hex(int(price * 1e5))[2:].zfill(6)  # Multiply by 100 to convert to cents, then convert to hex
+
+    # Create the command string
+    command_string = f"<Command><Name>set_current_price</Name><Price>0x{price_hex}</Price><TrailingDigits>0x05</TrailingDigits></Command>"
+    print(command_string)
+    emu2.write(command_string.encode(encoding="ascii"))
+
+def is_weekend():
+    return datetime.datetime.today().weekday() in [5, 6]  # 5 is Saturday, 6 is Sunday
+
+def check_period():
+    global current_period
+    now = datetime.datetime.now().time()
+    if is_weekend():
+        if now >= pricing_periods["Super Off-Peak"][0] or now < pricing_periods["Super Off-Peak"][1]:
+            period = "Super Off-Peak"
+        else:
+            period = "Off-Peak"
+    else:
+        for period, times in pricing_periods.items():
+            if isinstance(times[0], tuple):  # For Off-Peak which has multiple time ranges
+                for start, end in times:
+                    if start <= now <= end:
+                        break
+                else:
+                    continue
+                break
+            else:
+                start, end = times
+                if start <= now <= end:
+                    break
+        else:
+            period = "Off-Peak"
+    if period != current_period:
+        setPrice(period)
+        current_period = period
+
+def open_serial_port():
+    port_list = ['/dev/ttyACM0', '/dev/ttyACM1']
+    
+    for port in port_list:
+        try:
+            ser = serial.Serial(port, 115200, timeout=1)
+            print(f"Opened serial port: {port}")
+            return ser
+        except serial.SerialException:
+            print(f"Failed to open serial port: {port}")
+            continue
+    
+    print("Failed to open any serial port")
+    return None
+
+
+
+#domain = "192.168.1.100"
+domain = "192.168.1.100:8080"
+emoncmspath = ""
 apikey = "xxxx"
 nodeid = "power"
 
@@ -18,25 +109,20 @@ print()
 print('Read your Rainforest EMU2 device:')
 print()
 
-if platform.system() == 'Darwin':
-    dev = '/dev/tty.usbmodem11'
-elif platform.system() == 'Linux':
-    dev = '/dev/ttyACM0'
-else:
-    print('ERROR: unknown os type!')
-    exit(0)
 
-emu2 = serial.Serial(dev, 115200, timeout=1)
+emu2 = open_serial_port()
+  
 
 try:
     delivered_ts = demand_ts = 0
     while True:
+        check_period()
         msg = emu2.readlines()
         if msg == [] or msg[0].decode()[0] != '<':
             continue     
         
         msg = ''.join([line.decode() for line in msg])
-        
+        print(msg)
         try:
             tree = et.fromstring(msg)
         except:
@@ -52,7 +138,7 @@ try:
             power /= int(tree.find('Divisor').text, 16)
             power = round(power, int(tree.find('DigitsRight').text, 16))
             print('Message:', tree.tag, '- Apparent Power = ', power, 'kW', '(delay', diff, 's).')
-            request = "http://"+domain+"/"+emoncmspath+"/input/post.json?apikey="+apikey+"&node="+str(nodeid)+"&json={InstantPower:"+str(power)+"}"
+            request = "http://"+domain+"/"+emoncmspath+"input/post.json?apikey="+apikey+"&node="+str(nodeid)+"&json={InstantPower:"+str(power)+"}"
 #            print(request)
             try:
                 r = requests.get(request,timeout=3)
@@ -76,7 +162,7 @@ try:
             energy /= int(tree.find('Divisor').text, 16)
             energy = round(energy, int(tree.find('DigitsRight').text, 16))
             print('Message:', tree.tag, '- Net Apparent Energy = ', energy, 'kWh', '(delay', diff, 's).')
-            request = "http://"+domain+"/"+emoncmspath+"/input/post.json?    apikey="+apikey+"&node="+str(nodeid)+"&json={MeterTotal:"+str(energy)+"}"
+            request = "http://"+domain+"/"+emoncmspath+"input/post.json?    apikey="+apikey+"&node="+str(nodeid)+"&json={MeterTotal:"+str(energy)+"}"
 #            print(request)
             try:
                 r = requests.get(request.strip(),timeout=3)
@@ -103,3 +189,4 @@ except KeyboardInterrupt:
     print()
     emu2.close()    
     sys.exit(0)
+
