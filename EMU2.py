@@ -133,7 +133,9 @@ try:
             diff = ts - demand_ts
             demand_ts = ts
             
-            power = int(tree.find('Demand').text, 16)
+            demand = tree.find('Demand').text
+            demand = int.from_bytes(bytes.fromhex(demand[2:]), byteorder="big", signed=True)
+            power = demand #int(tree.find('Demand').text, 16)
             power *= int(tree.find('Multiplier').text, 16)
             power /= int(tree.find('Divisor').text, 16)
             power = round(power, int(tree.find('DigitsRight').text, 16))
@@ -155,9 +157,12 @@ try:
             ts = int(tree.find('TimeStamp').text, 16)
             diff = ts - delivered_ts
             delivered_ts = ts
-
-            energy = int(tree.find('SummationDelivered').text, 16)
-            energy -= int(tree.find('SummationReceived').text, 16)
+            SummationDelivered = tree.find('SummationDelivered').text
+            SummationDelivered = int.from_bytes(bytes.fromhex(SummationDelivered[2:]), byteorder="big", signed=True)
+            SummationReceived = tree.find('SummationReceived').text
+            SummationReceived = int.from_bytes(bytes.fromhex(SummationReceived[2:]), byteorder="big", signed=True
+            energy = SummationDelivered
+            energy -= SummationReceived
             energy *= int(tree.find('Multiplier').text, 16)
             energy /= int(tree.find('Divisor').text, 16)
             energy = round(energy, int(tree.find('DigitsRight').text, 16))
